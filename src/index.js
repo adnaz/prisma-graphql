@@ -1,7 +1,16 @@
-const { ApolloServer } = require('apollo-server');
+const { ApolloServer,PubSub } = require('apollo-server');
 const { PrismaClient } = require('@prisma/client')
 const fs = require('fs');
 const path = require('path');
+const { getUserId } = require('./utils');
+const Query = require('./resolvers/Query')
+const Mutation = require('./resolvers/Mutation')
+const User = require('./resolvers/User')
+const Link = require('./resolvers/Link')
+const Vote = require('./resolvers/Vote')
+const Subscription = require('./resolvers/Subscription')
+
+const pubsub = new PubSub();
 // 1
 const typeDefs = `
   type Query {
@@ -12,33 +21,35 @@ const typeDefs = `
     id: ID!
     description: String!
     url: String!
+    postedBy: User
+  }
+  type AuthPayload {
+    token: String
+    user: User
+  }
+  type User {
+    id: ID!
+    name: String!
+    email: String!
+    links: [Link!]!
   }
   type Mutation {
     post(url: String!, description: String!): Link!
+    signup(email: String!, password: String!, name: String!): AuthPayload
+    login(email: String!, password: String!): AuthPayload
   }
 
 `
 
 // 2
 const resolvers = {
-    Query: {
-      info: () => `This is the API of a Hackernews Clone`,
-      feed: async (parent, args, context) => {
-        return context.prisma.link.findMany()
-      },
-    },
-    Mutation: {
-      post: (parent, args, context, info) => {
-        const newLink = context.prisma.link.create({
-          data: {
-            url: args.url,
-            description: args.description,
-          },
-        })
-        return newLink
-      },
-    },
-  }
+  Query,
+  Mutation,
+  User,
+  Link,
+  Vote,
+  Subscription
+}
 const prisma = new PrismaClient()
 // 3
 const server = new ApolloServer({
@@ -47,8 +58,16 @@ const server = new ApolloServer({
         'utf8'
       ),
   resolvers,
-  context: {
-    prisma,
+  context: ({ req }) => {
+    return {
+      ...req,
+      prisma,
+      pubsub,
+      userId:
+        req && req.headers.authorization
+          ? getUserId(req)
+          : null
+    };
   }
 })
 
